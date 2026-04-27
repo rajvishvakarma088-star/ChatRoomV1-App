@@ -26,7 +26,6 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VideoCall
 import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material3.Card
@@ -74,6 +73,7 @@ fun ChatScreen(
     roomId: String,
     roomName: String,
     onBack: () -> Unit = {},
+    onOpenCall: (videoEnabled: Boolean, autoStart: Boolean) -> Unit = { _, _ -> },
     messageViewModel: MessageViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -126,16 +126,12 @@ fun ChatScreen(
                 },
                 actions = {
                     IconButton(onClick = {
-                        messageViewModel.startCall(videoEnabled = false)
-                        launchCall(context, roomDetails?.activeCallRoom.takeUnless { it.isNullOrBlank() }
-                            ?: "chatbot-$roomId-audio", false)
+                        onOpenCall(false, true)
                     }) {
                         Icon(Icons.Default.Call, contentDescription = "Audio call")
                     }
                     IconButton(onClick = {
-                        messageViewModel.startCall(videoEnabled = true)
-                        launchCall(context, roomDetails?.activeCallRoom.takeUnless { it.isNullOrBlank() }
-                            ?: "chatbot-$roomId-video", true)
+                        onOpenCall(true, true)
                     }) {
                         Icon(Icons.Default.VideoCall, contentDescription = "Video call")
                     }
@@ -155,7 +151,7 @@ fun ChatScreen(
             roomDetails?.takeIf { it.activeCallType.isNotBlank() }?.let { room ->
                 ActiveCallBanner(
                     room = room,
-                    onJoin = { launchCall(context, room.activeCallRoom, room.activeCallType == "video") },
+                    onJoin = { onOpenCall(room.activeCallType == "video", true) },
                     onEnd = { messageViewModel.endCall() }
                 )
                 Spacer(modifier = Modifier.height(10.dp))
@@ -360,16 +356,7 @@ private fun MessageBubble(message: Message, onAttachmentClick: (String) -> Unit)
     }
 }
 
-private fun launchCall(context: android.content.Context, roomCode: String, videoEnabled: Boolean) {
-    val url = if (videoEnabled) {
-        "https://meet.jit.si/$roomCode#config.startWithVideoMuted=false"
-    } else {
-        "https://meet.jit.si/$roomCode#config.startWithVideoMuted=true"
-    }
-    openExternal(context, url)
-}
-
-private fun openExternal(context: android.content.Context, url: String) {
+fun openExternal(context: android.content.Context, url: String) {
     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 }
 

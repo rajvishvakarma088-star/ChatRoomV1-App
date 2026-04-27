@@ -13,6 +13,7 @@ class MessageViewModel : ViewModel() {
 
     private val messageRepository = MessageRepository(Injection.instance())
     private val roomRepository = RoomRepository(Injection.instance())
+    private val callRepository = CallRepository(Injection.instance())
     private val userRepository = UserRepository(
         FirebaseAuth.getInstance(),
         Injection.instance()
@@ -116,7 +117,7 @@ class MessageViewModel : ViewModel() {
         val room = _roomDetails.value ?: return
         val email = _currentUser.value?.email ?: return
         val callType = if (videoEnabled) "video" else "audio"
-        val callRoom = "chatbot-${room.id}-$callType"
+        val callRoom = buildConferenceRoomId(room.id, callType)
 
         viewModelScope.launch {
             roomRepository.updateCallState(room.id, callType, callRoom, email)
@@ -136,7 +137,7 @@ class MessageViewModel : ViewModel() {
         val room = _roomDetails.value ?: return
         val email = _currentUser.value?.email ?: return
         viewModelScope.launch {
-            roomRepository.updateCallState(room.id, null, null, null)
+            callRepository.endCallForRoom(room.id)
             messageRepository.sendMessage(
                 room.id,
                 Message(

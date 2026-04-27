@@ -72,6 +72,32 @@ fun NavigationGraph(
                 ChatScreen(
                     roomId = roomId,
                     roomName = roomName,
+                    onBack = { navController.popBackStack() },
+                    onOpenCall = { videoEnabled, autoStart ->
+                        navController.navigate(
+                            Screen.CallScreen.withArgs(
+                                roomId = roomId,
+                                roomName = roomName,
+                                callType = if (videoEnabled) "video" else "audio",
+                                autoStart = autoStart
+                            )
+                        )
+                    }
+                )
+            }
+
+            composable("${Screen.CallScreen.route}/{roomId}/{roomName}/{callType}/{autoStart}") { backStackEntry ->
+                val roomId = backStackEntry.arguments?.getString("roomId") ?: ""
+                val roomNameEncoded = backStackEntry.arguments?.getString("roomName") ?: ""
+                val roomName = URLDecoder.decode(roomNameEncoded, "UTF-8")
+                val callType = backStackEntry.arguments?.getString("callType") ?: "audio"
+                val autoStart = backStackEntry.arguments?.getString("autoStart")?.toBooleanStrictOrNull() ?: false
+
+                CallScreen(
+                    roomId = roomId,
+                    roomName = roomName,
+                    requestedType = callType,
+                    autoStart = autoStart,
                     onBack = { navController.popBackStack() }
                 )
             }

@@ -9,4 +9,9 @@ sealed class Screen(val route:String){
             return "chatscreen/$roomId/${URLEncoder.encode(roomName, "UTF-8")}"
         }
     }
+    object CallScreen: Screen("callscreen") {
+        fun withArgs(roomId: String, roomName: String, callType: String, autoStart: Boolean): String {
+            return "callscreen/$roomId/${URLEncoder.encode(roomName, "UTF-8")}/$callType/$autoStart"
+        }
+    }
 }
