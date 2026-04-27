@@ -8,12 +8,16 @@ class UserRepository(
     private val firestore: FirebaseFirestore
 ) {
 
-    suspend fun signUp(email: String, password: String, firstName: String, lastName: String): Result<Boolean> {
+    suspend fun signUp(
+        email: String,
+        password: String,
+        firstName: String,
+        lastName: String
+    ): Result<Boolean> {
         return try {
             val result = auth.createUserWithEmailAndPassword(email, password).await()
             val user = result.user ?: throw Exception("User is null")
 
-            // Optional: Save name to Firestore
             firestore.collection("users").document(user.uid).set(
                 mapOf(
                     "firstName" to firstName,
@@ -35,28 +39,19 @@ class UserRepository(
         Result.Error(e)
     }
 
-    private suspend fun saveUserToFirestore(user: User) {
-        firestore.collection("users").document(user.email).set(user).await()
-    }
-
     suspend fun getCurrentUser(): Result<User> {
-        val firebaseUser = auth.currentUser
-        val email = firebaseUser?.email
+        val firebaseUser = auth.currentUser ?: return Result.Error(Exception("No authenticated user found"))
 
-        return if (email != null) {
-            try {
-                val snapshot = firestore.collection("users").document(email).get().await()
-                val user = snapshot.toObject(User::class.java)
-                if (user != null) {
-                    Result.Success(user)
-                } else {
-                    Result.Error(Exception("User not found in Firestore"))
-                }
-            } catch (e: Exception) {
-                Result.Error(e)
+        return try {
+            val snapshot = firestore.collection("users").document(firebaseUser.uid).get().await()
+            val user = snapshot.toObject(User::class.java)
+            if (user != null) {
+                Result.Success(user)
+            } else {
+                Result.Error(Exception("User not found in Firestore"))
             }
-        } else {
-            Result.Error(Exception("No authenticated user found"))
+        } catch (e: Exception) {
+            Result.Error(e)
         }
     }
 }

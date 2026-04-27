@@ -1,95 +1,69 @@
-import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chatbot.Result
-import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
-
 
 class RoomViewModel : ViewModel() {
 
-    private val _rooms = MutableLiveData<List<Room>>()
+    private val roomRepository = RoomRepository(Injection.instance())
+
+    private val _rooms = MutableLiveData<List<Room>>(emptyList())
     val rooms: LiveData<List<Room>> get() = _rooms
-    private val roomRepository: RoomRepository
+
+    private val _roomAction = MutableLiveData<Result<Room>>(Result.Idle)
+    val roomAction: LiveData<Result<Room>> get() = _roomAction
 
     init {
-        roomRepository = RoomRepository(Injection.instance())
-        listenToRooms()
+        roomRepository.listenToRooms(
+            onUpdate = { _rooms.postValue(it) },
+            onError = { _roomAction.postValue(Result.Error(it)) }
+        )
     }
 
-    fun createRoom(name: String) {
+    fun createRoom(name: String, password: String) {
         viewModelScope.launch {
-            roomRepository.createRoom(name)
+            when (val result = roomRepository.createRoom(name, password)) {
+                is Result.Error -> _roomAction.value = Result.Error(result.exception)
+                else -> Unit
+            }
         }
     }
 
-
-    private fun listenToRooms() {
-        FirebaseFirestore.getInstance()
-            .collection("rooms")
-            .addSnapshotListener { snapshot, e ->
-                if (e != null) {
-                    Log.e("RoomViewModel", "Listen failed.", e)
-                    _rooms.value = emptyList()
-                    return@addSnapshotListener
-                }
-
-                val roomList = snapshot?.documents?.mapNotNull { doc ->
-                    doc.toObject(Room::class.java)?.copy(id = doc.id)
-                } ?: emptyList()
-
-                _rooms.value = roomList
-            }
-
-
+    fun joinRoom(room: Room, password: String) {
+        _roomAction.value = Result.Loading
+        viewModelScope.launch {
+            _roomAction.value = roomRepository.joinRoom(room, password)
+        }
     }
-    fun deleteRoom(room: Room) {
-        val db = FirebaseFirestore.getInstance()
 
-        db.collection("rooms")
-            .document(room.id)
-            .delete()
-            .addOnSuccessListener {
-                Log.d("RoomViewModel", "Room deleted: ${room.name}")
-            }
-            .addOnFailureListener { e ->
-                Log.e("RoomViewModel", "Failed to delete room: ${room.name}", e)
-            }
+    fun deleteRoom(room: Room) {
+        viewModelScope.launch {
+            roomRepository.deleteRoom(room)
+        }
     }
 
     fun deleteAllRooms() {
-        val db = FirebaseFirestore.getInstance()
-        db.collection("rooms")
-            .get()
-            .addOnSuccessListener { snapshot ->
-                for (doc in snapshot.documents) {
-                    doc.reference.delete()
-                }
-                loadRooms() // Refresh UI
-            }
-            .addOnFailureListener { e ->
-                Log.e("RoomViewModel", "Error deleting all rooms", e)
-            }
+        viewModelScope.launch {
+            roomRepository.deleteAllRooms()
+        }
     }
 
-    fun loadRooms() {
-        val db = FirebaseFirestore.getInstance()
-
-        db.collection("rooms")
-            .get()
-            .addOnSuccessListener { snapshot ->
-                val roomList = snapshot.documents.mapNotNull { doc ->
-                    doc.toObject(Room::class.java)?.copy(id = doc.id)
-                }
-                _rooms.value = roomList
-                Log.d("RoomViewModel", "Rooms loaded: ${roomList.size}")
-            }
-            .addOnFailureListener { e ->
-                _rooms.value = emptyList()
-                Log.e("RoomViewModel", "Failed to load rooms", e)
-            }
+    fun clearAction() {
+        _roomAction.value = Result.Idle
     }
-
 }
+
+data class Room(
+    val id: String = "",
+    val name: String = "",
+    val password: String = "",
+    val createdBy: String = "",
+    val members: List<String> = emptyList(),
+    val memberCount: Int = 0,
+    val activeCallType: String = "",
+    val activeCallRoom: String = "",
+    val activeCallHost: String = "",
+    val activeCallStartedAt: Long = 0L
+)

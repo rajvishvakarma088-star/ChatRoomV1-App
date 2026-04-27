@@ -1,130 +1,286 @@
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.VideoCall
+import androidx.compose.material.icons.outlined.GraphicEq
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.colorResource
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.chatbot.R
+import coil.compose.AsyncImage
+import com.example.chatbot.Result
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+@OptIn(ExperimentalMaterial3Api::class)
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun ChatScreen(
     roomId: String,
-    roomName : String,
+    roomName: String,
+    onBack: () -> Unit = {},
     messageViewModel: MessageViewModel = viewModel()
 ) {
+    val context = LocalContext.current
     val messages by messageViewModel.messages.observeAsState(emptyList())
     val currentUser by messageViewModel.currentUser.observeAsState()
-    val text = remember { mutableStateOf("") }
+    val roomDetails by messageViewModel.roomDetails.observeAsState()
+    val composerState by messageViewModel.composerState.observeAsState(Result.Idle)
+    val snackbarHostState = remember { SnackbarHostState() }
+    var text by remember { mutableStateOf("") }
 
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { messageViewModel.sendAttachment(context, it, "image") }
+    }
+    val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { messageViewModel.sendAttachment(context, it, "audio") }
+    }
 
-
-    // Set roomId only once when ChatScreen is launched
     LaunchedEffect(roomId) {
         messageViewModel.setRoomId(roomId)
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        var expanded by remember { mutableStateOf(false) }
-        Row(modifier = Modifier.padding(top = 22.dp)) {
-            IconButton(onClick = {}) {
-                Icon(imageVector = Icons.Default.ArrowBack, contentDescription = null)
+    LaunchedEffect(composerState) {
+        when (val state = composerState) {
+            is Result.Error -> {
+                snackbarHostState.showSnackbar(state.exception.message ?: "Action failed")
+                messageViewModel.clearComposerState()
             }
-
-            Text(
-                text = roomName,
-                style = TextStyle(
-                    fontSize = 22.371429443359375.sp,
-                    fontWeight = FontWeight.Normal
-                ),
-                modifier = Modifier.padding(top = 12.dp)
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                IconButton(onClick = { expanded = true }) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "More")
-                }
-
+            is Result.Success -> messageViewModel.clearComposerState()
+            else -> Unit
         }
     }
 
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            reverseLayout = true // for bottom-up message view
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text(roomDetails?.name ?: roomName, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "${roomDetails?.memberCount ?: 0} participants",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = {
+                        messageViewModel.startCall(videoEnabled = false)
+                        launchCall(context, roomDetails?.activeCallRoom.takeUnless { it.isNullOrBlank() }
+                            ?: "chatbot-$roomId-audio", false)
+                    }) {
+                        Icon(Icons.Default.Call, contentDescription = "Audio call")
+                    }
+                    IconButton(onClick = {
+                        messageViewModel.startCall(videoEnabled = true)
+                        launchCall(context, roomDetails?.activeCallRoom.takeUnless { it.isNullOrBlank() }
+                            ?: "chatbot-$roomId-video", true)
+                    }) {
+                        Icon(Icons.Default.VideoCall, contentDescription = "Video call")
+                    }
+                }
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(padding)
+                .padding(horizontal = 16.dp)
         ) {
-            items(messages.reversed()) { message ->
-                ChatMessageItem(
-                    message = message.copy(
-                        isSentByCurrentUser = message.senderId == currentUser?.email
-                    )
+            Spacer(modifier = Modifier.height(8.dp))
+            roomDetails?.takeIf { it.activeCallType.isNotBlank() }?.let { room ->
+                ActiveCallBanner(
+                    room = room,
+                    onJoin = { launchCall(context, room.activeCallRoom, room.activeCallType == "video") },
+                    onEnd = { messageViewModel.endCall() }
                 )
+                Spacer(modifier = Modifier.height(10.dp))
             }
-        }
 
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                reverseLayout = false,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(messages, key = { "${it.timestamp}-${it.senderId}-${it.attachmentUrl}" }) { message ->
+                    MessageBubble(
+                        message = message.copy(isSentByCurrentUser = message.senderId == currentUser?.email),
+                        onAttachmentClick = { url -> openExternal(context, url) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+            ComposerBar(
+                value = text,
+                onValueChange = { text = it },
+                onSend = {
+                    messageViewModel.sendMessage(text)
+                    text = ""
+                },
+                onImagePick = { imagePicker.launch("image/*") },
+                onAudioPick = { audioPicker.launch("audio/*") },
+                isLoading = composerState == Result.Loading
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+    }
+}
+
+@Composable
+private fun ActiveCallBanner(room: Room, onJoin: () -> Unit, onEnd: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f))
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            OutlinedTextField(
-                value = text.value,
-                onValueChange = { text.value = it },
-                textStyle = TextStyle.Default.copy(fontSize = 14.sp),
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(8.dp).size(50.dp),
-                shape = RoundedCornerShape(50),
-
-            )
-
-            IconButton(
-                onClick = {
-                    if (text.value.isNotBlank()) {
-                        messageViewModel.sendMessage(text.value.trim())
-                        text.value = ""
-                    }
-                    messageViewModel.loadMessages()
-                }
-            ) {
-                Image(painter = painterResource(R.drawable.group_24 )
-                    , contentDescription = null ,
-                    modifier = Modifier.size(60.dp),
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(MaterialTheme.colorScheme.secondary, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        if (room.activeCallType == "video") Icons.Default.VideoCall else Icons.Default.Call,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSecondary
                     )
+                }
+                Column {
+                    Text(
+                        "${room.activeCallType.replaceFirstChar(Char::titlecase)} call is live",
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "Started by ${room.activeCallHost}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Row {
+                TextButton(onClick = onJoin) { Text("Join") }
+                TextButton(onClick = onEnd) { Text("End") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComposerBar(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onSend: () -> Unit,
+    onImagePick: () -> Unit,
+    onAudioPick: () -> Unit,
+    isLoading: Boolean
+) {
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 2.dp
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onImagePick) {
+                    Icon(Icons.Default.AttachFile, contentDescription = null)
+                    Text("Image")
+                }
+                TextButton(onClick = onAudioPick) {
+                    Icon(Icons.Outlined.GraphicEq, contentDescription = null)
+                    Text("Audio")
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Write a message") },
+                    enabled = !isLoading,
+                    shape = RoundedCornerShape(18.dp)
+                )
+                FilledIconButton(
+                    onClick = onSend,
+                    enabled = value.isNotBlank() && !isLoading
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+                }
             }
         }
     }
@@ -132,44 +288,90 @@ fun ChatScreen(
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
-fun ChatMessageItem(message: Message) {
+private fun MessageBubble(message: Message, onAttachmentClick: (String) -> Unit) {
+    if (message.messageType == "system") {
+        Text(
+            text = message.text,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall
+        )
+        return
+    }
+
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(8.dp),
+        modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (message.isSentByCurrentUser) Alignment.End else Alignment.Start
     ) {
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .background(
-                    if (message.isSentByCurrentUser)
-                        colorResource(id = R.color.purple_700)
-                    else
-                        Color.LightGray
-                )
-                .padding(8.dp)
-        ) {
-            Text(
-                text = message.text,
-                color = if (message.isSentByCurrentUser) Color.White else Color.Black,
-                style = TextStyle(fontSize = 16.sp)
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = if (message.isSentByCurrentUser) MaterialTheme.colorScheme.primary else Color.White
             )
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                when (message.messageType) {
+                    "image" -> {
+                        AsyncImage(
+                            model = message.attachmentUrl,
+                            contentDescription = message.attachmentName,
+                            modifier = Modifier
+                                .size(220.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable { onAttachmentClick(message.attachmentUrl) }
+                        )
+                    }
+                    "audio" -> {
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable { onAttachmentClick(message.attachmentUrl) }
+                                .background(Color.Black.copy(alpha = 0.08f))
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null)
+                            Column {
+                                Text(message.attachmentName.ifBlank { "Audio clip" }, fontWeight = FontWeight.Medium)
+                                Text("Tap to open", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+
+                if (message.text.isNotBlank()) {
+                    Text(
+                        text = message.text,
+                        color = if (message.isSentByCurrentUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
         }
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = message.senderFirstName,
-            style = TextStyle(fontSize = 12.sp, color = Color.Gray)
+            text = "${message.senderFirstName} • ${formatTimestamp(message.timestamp)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Text(
-                text = formatTimestamp(message.timestamp),
-                style = TextStyle(fontSize = 12.sp, color = Color.Gray)
-            )
-        }
     }
 }
 
+private fun launchCall(context: android.content.Context, roomCode: String, videoEnabled: Boolean) {
+    val url = if (videoEnabled) {
+        "https://meet.jit.si/$roomCode#config.startWithVideoMuted=false"
+    } else {
+        "https://meet.jit.si/$roomCode#config.startWithVideoMuted=true"
+    }
+    openExternal(context, url)
+}
+
+private fun openExternal(context: android.content.Context, url: String) {
+    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+}
 
 @RequiresApi(Build.VERSION_CODES.O)
 private fun formatTimestamp(timestamp: Long): String {
@@ -178,8 +380,8 @@ private fun formatTimestamp(timestamp: Long): String {
     val now = LocalDateTime.now()
 
     return when {
-        isSameDay(messageDateTime, now) -> "today ${formatTime(messageDateTime)}"
-        isSameDay(messageDateTime.plusDays(1), now) -> "yesterday ${formatTime(messageDateTime)}"
+        isSameDay(messageDateTime, now) -> formatTime(messageDateTime)
+        isSameDay(messageDateTime.plusDays(1), now) -> "Yesterday ${formatTime(messageDateTime)}"
         else -> formatDate(messageDateTime)
     }
 }
@@ -198,20 +400,6 @@ private fun formatTime(dateTime: LocalDateTime): String {
 
 @RequiresApi(Build.VERSION_CODES.O)
 private fun formatDate(dateTime: LocalDateTime): String {
-    val formatter = DateTimeFormatter.ofPattern("MMM d, yyyy")
+    val formatter = DateTimeFormatter.ofPattern("MMM d")
     return formatter.format(dateTime)
-}
-
-@RequiresApi(Build.VERSION_CODES.O)
-@Composable
-@Preview
-fun ChatScreenPreview() {
-    ChatScreen(roomId = "sampleRoom" , roomName = "genral")
-}
-
-@RequiresApi(Build.VERSION_CODES.O)
-@Composable
-@Preview
-fun ChatItemPreview() {
-    ChatMessageItem(message = Message())
 }

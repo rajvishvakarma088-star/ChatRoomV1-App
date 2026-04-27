@@ -56,7 +56,7 @@ fun NavigationGraph(
 
             composable(Screen.ChatRoomsScreen.route) {
                 ChatRoomListScreen(
-                    authViewModel = authViewModel, // ✅ Pass it here
+                    authViewModel = authViewModel,
                     onJoinRoom = { room ->
                         navController.navigate(Screen.ChatScreen.withArgs(room.id, room.name))
                     },
@@ -69,7 +69,11 @@ fun NavigationGraph(
                 val roomNameEncoded = backStackEntry.arguments?.getString("roomName") ?: ""
                 val roomName = URLDecoder.decode(roomNameEncoded, "UTF-8")
 
-                ChatScreen(roomId = roomId, roomName = roomName)
+                ChatScreen(
+                    roomId = roomId,
+                    roomName = roomName,
+                    onBack = { navController.popBackStack() }
+                )
             }
         }
     }
